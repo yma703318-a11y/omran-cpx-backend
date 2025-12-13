@@ -1,0 +1,18 @@
+{
+  "name": "omran-cpx-backend",
+  "version": "1.0.0",
+  "description": "CPX Postback Handler for Omran App",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "@google-cloud/firestore": "^6.5.0",
+    "crypto": "latest"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
