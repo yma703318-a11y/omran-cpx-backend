@@ -1,7 +1,6 @@
 const express = require('express');
 const { Firestore } = require('@google-cloud/firestore');
 const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
 
 const app = express();
@@ -15,74 +14,83 @@ let firestore = null;
 function getFirestore() {
   if (!firestore) {
     try {
-      // محاولة قراءة من Environment
       if (process.env.FIREBASE_KEY_JSON) {
+        // من Environment (Vercel)
         const credentials = JSON.parse(process.env.FIREBASE_KEY_JSON);
         firestore = new Firestore({
           projectId: credentials.project_id,
-          credentials: credentials
+          credentials
         });
       } else {
-        // قراءة من ملف محلي
+        // من ملف محلي (تطوير فقط)
         const keyPath = path.join(__dirname, '..', 'firebase-key.json');
         const credentials = require(keyPath);
         firestore = new Firestore({
           projectId: credentials.project_id,
-          credentials: credentials
+          credentials
         });
       }
       console.log('✅ Firebase initialized');
     } catch (error) {
-      console.error('❌ Firebase error:', error.message);
+      console.error('❌ Firebase init error:', error.message);
     }
   }
   return firestore;
 }
 
-// 🔥 3. معالجة CPX
+// 🔥 3. استقبال Postback من CPX
 app.get('/cpx', async (req, res) => {
   console.log('📨 CPX Postback:', req.query);
-  
+
   try {
-    const { status, trans_id, secure_hash } = req.query;
-    
-    if (!trans_id || !secure_hash) {
+    const { status, trans_id } = req.query;
+    const receivedHash = req.query.hash || req.query.secure_hash;
+
+    // 🔴 تحقق أساسي
+    if (!trans_id || !receivedHash) {
+      console.error('❌ Missing parameters', { trans_id, receivedHash });
       return res.status(400).send('Missing parameters');
     }
-    
+
     if (!CPX_APP_SECRET) {
       return res.status(500).send('Server error');
     }
-    
-    // التحقق من Hash
+
+    // 🔐 حساب الهاش
     const expectedHash = crypto
       .createHash('md5')
       .update(`${trans_id}-${CPX_APP_SECRET}`)
-      .digest('hex');
-    
-    if (secure_hash !== expectedHash) {
-      console.error('❌ Invalid hash');
+      .digest('hex')
+      .toLowerCase();
+
+    if (receivedHash.toLowerCase() !== expectedHash) {
+      console.error('❌ Invalid hash', {
+        received: receivedHash,
+        expected: expectedHash
+      });
       return res.status(403).send('Invalid hash');
     }
-    
-    console.log('✅ Valid hash - Transaction:', trans_id);
-    
-    if (status === "1") {
-      // حفظ في Firebase
+
+    console.log('✅ Valid CPX transaction:', trans_id);
+
+    // 💾 حفظ المعاملة
+    if (status === '1') {
       const db = getFirestore();
       if (db) {
         await db.collection('cpx_transactions').doc(trans_id).set({
           status: 'completed',
           timestamp: new Date(),
           data: req.query
-        });
+        }, { merge: true });
       }
     }
-    
-    res.send('OK');
+
+    // ⚠️ مهم جدًا: CPX يتطلب OK فقط
+    return res.send('OK');
+
   } catch (error) {
-    console.error('🔥 Error:', error);
-    res.send('OK');
+    console.error('🔥 CPX handler error:', error);
+    return res.send('OK'); // لا تُرجع خطأ حتى لا يعيد CPX الإرسال
   }
 });
 
@@ -102,7 +110,7 @@ app.get('/', (req, res) => {
   `);
 });
 
-// 🔥 5. تحقق البيئة
+// 🔥 5. فحص البيئة
 app.get('/env-check', (req, res) => {
   res.json({
     status: 'OK',
@@ -114,5 +122,5 @@ app.get('/env-check', (req, res) => {
   });
 });
 
-// 🔥 6. تصدير للسيرفر
+// 🔥 6. تصدير التطبيق لـ Vercel
 module.exports = app;
