@@ -1,7 +1,8 @@
 const express = require('express');
 const { Firestore } = require('@google-cloud/firestore');
 const crypto = require('crypto');
-
+const fs = require('fs');
+const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -14,24 +15,19 @@ let firestore = null;
 function getFirestore() {
   if (!firestore) {
     try {
-      // قراءة Firebase Key من Environment Variable
-      const firebaseKeyJson = process.env.FIREBASE_KEY_JSON;
-      
-      if (!firebaseKeyJson) {
-        throw new Error('FIREBASE_KEY_JSON environment variable is missing');
-      }
-      
-      const credentials = JSON.parse(firebaseKeyJson);
+      // قراءة Firebase Key من ملف
+      const keyPath = path.join(__dirname, 'firebase-key.json');
+      const credentials = require(keyPath);
       
       firestore = new Firestore({
-        projectId: 'omran-app-123',
+        projectId: credentials.project_id,
         credentials: credentials
       });
       
       console.log('✅ Firebase initialized successfully');
     } catch (error) {
       console.error('❌ Firebase initialization error:', error.message);
-      throw error;
+      // استمر حتى بدون Firebase
     }
   }
   return firestore;
